@@ -49,6 +49,11 @@ import android.widget.TextView;
 import android.view.View;
 import android.os.StatFs;
 import android.view.MenuItem;
+import android.content.Context;
+import android.content.ActivityNotFoundException;
+import java.util.Collections;
+import java.util.Comparator;
+import android.widget.Button;
 
 public class FileManagerActivity extends AppCompatActivity implements FileAdapter.FileClickListener,NavigationView.OnNavigationItemSelectedListener {
     private static final int REQUEST_PERMISSION_CODE = 1;
@@ -66,7 +71,15 @@ public class FileManagerActivity extends AppCompatActivity implements FileAdapte
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_file_manager);
+        Button menuButton = findViewById(R.id.menu_button);
 
+        // 设置点击事件
+        menuButton.setOnClickListener(new View.OnClickListener() {
+                @Override
+                public void onClick(View v) {
+                    drawerLayout.openDrawer(GravityCompat.START);
+                }
+            });
         recyclerView = findViewById(R.id.recyclerView);
         webView = findViewById(R.id.webView);
         NavigationView navigationView = findViewById(R.id.nav_view);
@@ -100,6 +113,16 @@ public class FileManagerActivity extends AppCompatActivity implements FileAdapte
         } else {
             requestPermission();
         }
+    }
+    // 文件排序方法 (添加到FileManagerActivity类中)
+    private void sortFilesAZ() {
+        Collections.sort(fileList, new Comparator<File>() {
+                @Override
+                public int compare(File f1, File f2) {
+                    return f1.getName().compareToIgnoreCase(f2.getName());
+                }
+            });
+        fileAdapter.notifyDataSetChanged();
     }
     private void updateStorageInfo() {
         if (navigationView == null) return;
@@ -154,10 +177,7 @@ public class FileManagerActivity extends AppCompatActivity implements FileAdapte
     private void joinQQGroup() {
         try {
             // 替换为您的QQ群key
-            String key = "您的QQ群key";
-            Intent intent = new Intent();
-            intent.setData(Uri.parse("mqqopensdkapi://bizAgent/qm/qr?url=http%3A%2F%2Fqm.qq.com%2Fcgi-bin%2Fqm%2Fqr%3Ffrom%3Dapp%26p%3Dandroid%26k%3D" + key));
-            startActivity(intent);
+            openQQGroupDetail(this, "750492566");
         } catch (Exception e) {
             Toast.makeText(this, "未安装QQ或版本不支持", Toast.LENGTH_SHORT).show();
         }
@@ -175,6 +195,8 @@ public class FileManagerActivity extends AppCompatActivity implements FileAdapte
         fileList.clear();
         File[] files = currentDirectory.listFiles();
         if (files != null) {
+            Collections.addAll(fileList, files);
+            sortFilesAZ();
             for (File file : files) {
                 fileList.add(file);
             }
@@ -303,6 +325,18 @@ public class FileManagerActivity extends AppCompatActivity implements FileAdapte
             super.onBackPressed();
         }
     }
+    public static void openQQGroupDetail(Context context, String groupNumber) {
+    try {
+        // 构造跳转到QQ群详情页面的URL
+        String url = "mqqapi://card/show_pslcard?src_type=internal&version=1&uin=" + groupNumber + "&card_type=group&source=qrcode";
+        Intent intent = new Intent(Intent.ACTION_VIEW, Uri.parse(url));
+        context.startActivity(intent);
+    } catch (ActivityNotFoundException e) {
+        // 如果设备未安装QQ应用，可以提示用户
+        Toast.makeText(context, "未检测到QQ应用，请先安装", Toast.LENGTH_SHORT).show();
+    }
+}
+
 
     private void openFile(File file) {
         String mimeType = getMimeType(file.getPath());
