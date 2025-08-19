@@ -339,6 +339,10 @@ public class FileManagerActivity extends AppCompatActivity implements FileAdapte
 
 
     private void openFile(File file) {
+        if (file.length() > 10 * 1024 * 1024) { // 大于10MB的图片
+            Toast.makeText(this, "图片过大，无法预览", Toast.LENGTH_SHORT).show();
+            return;
+        }
         String mimeType = getMimeType(file.getPath());
 
         if (mimeType != null) {
