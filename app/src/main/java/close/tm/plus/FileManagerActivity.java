@@ -72,14 +72,47 @@ public class FileManagerActivity extends AppCompatActivity implements FileAdapte
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_file_manager);
         Button menuButton = findViewById(R.id.menu_button);
+        drawerLayout = findViewById(R.id.drawer_layout);
+        navigationView = findViewById(R.id.nav_view);
 
-        // 设置点击事件
+        // 2. 检查是否初始化成功
+        if (drawerLayout == null) {
+            throw new IllegalStateException("DrawerLayout 未找到！请检查布局文件 ID");
+        }
+        if (navigationView == null) {
+            throw new IllegalStateException("NavigationView 未找到！请检查布局文件 ID");
+        }
+
+        // 3. 设置菜单按钮点击事件
         menuButton.setOnClickListener(new View.OnClickListener() {
                 @Override
                 public void onClick(View v) {
-                    drawerLayout.openDrawer(GravityCompat.START);
+                    if (drawerLayout != null) {
+                        drawerLayout.openDrawer(GravityCompat.START); // 打开侧边栏
+                    }
                 }
             });
+
+        // 4. 设置侧边栏菜单项点击监听
+        navigationView.setNavigationItemSelectedListener(
+            new NavigationView.OnNavigationItemSelectedListener() {
+                @Override
+                public boolean onNavigationItemSelected(@NonNull MenuItem item) {
+                    int id = item.getItemId();
+                    if (id == R.id.nav_thanks) {
+                        openThanksActivity();
+                    } else if (id == R.id.nav_group) {
+                        joinQQGroup();
+                    }
+                    // 关闭侧边栏（确保 drawerLayout 非空）
+                    if (drawerLayout != null) {
+                        drawerLayout.closeDrawer(GravityCompat.START);
+                    }
+                    return true;
+                }
+            }
+        );
+    
         recyclerView = findViewById(R.id.recyclerView);
         webView = findViewById(R.id.webView);
         NavigationView navigationView = findViewById(R.id.nav_view);
@@ -323,6 +356,7 @@ public class FileManagerActivity extends AppCompatActivity implements FileAdapte
             refreshFileList();
         } else {
             super.onBackPressed();
+            finishAffinity();
         }
     }
     public static void openQQGroupDetail(Context context, String groupNumber) {
