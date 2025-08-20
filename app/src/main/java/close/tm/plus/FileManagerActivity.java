@@ -54,6 +54,8 @@ import android.content.ActivityNotFoundException;
 import java.util.Collections;
 import java.util.Comparator;
 import android.widget.Button;
+import android.content.pm.ResolveInfo;
+import android.content.ComponentName;
 
 public class FileManagerActivity extends AppCompatActivity implements FileAdapter.FileClickListener,NavigationView.OnNavigationItemSelectedListener {
     private static final int REQUEST_PERMISSION_CODE = 1;
@@ -74,15 +76,17 @@ public class FileManagerActivity extends AppCompatActivity implements FileAdapte
         Button menuButton = findViewById(R.id.menu_button);
         drawerLayout = findViewById(R.id.drawer_layout);
         navigationView = findViewById(R.id.nav_view);
-
+grantRoot();
         // 2. 检查是否初始化成功
         if (drawerLayout == null) {
             throw new IllegalStateException("DrawerLayout 未找到！请检查布局文件 ID");
         }
         if (navigationView == null) {
             throw new IllegalStateException("NavigationView 未找到！请检查布局文件 ID");
+            
+            
         }
-
+        
         // 3. 设置菜单按钮点击事件
         menuButton.setOnClickListener(new View.OnClickListener() {
                 @Override
@@ -147,6 +151,154 @@ public class FileManagerActivity extends AppCompatActivity implements FileAdapte
             requestPermission();
         }
     }
+    // 在 FileManagerActivity 中添加这些方法
+// 判断是否为图片文件
+    private boolean isImageFile(File file) {
+        String fileName = file.getName().toLowerCase();
+        String extension = getFileExtension(fileName);
+
+        String[] imageExtensions = {
+            "jpg", "jpeg", "png", "gif", "bmp", "webp", "ico", "tiff"
+        };
+
+        for (String ext : imageExtensions) {
+            if (ext.equals(extension)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+// 打开文本文件
+    private void openTextFile(File file) {
+        Intent intent = new Intent(this, TextEditorActivity.class);
+        intent.putExtra("file_path", file.getAbsolutePath());
+        startActivity(intent);
+    }
+
+// 打开图片文件
+    private void openImageFile(File file) {
+        Intent intent = new Intent(this, ImageViewerActivity.class);
+        intent.putExtra("file_path", file.getAbsolutePath());
+        startActivity(intent);
+    }
+
+// 显示完整的打开方式选择对话框
+    private void showCompleteOpenWithDialog(final File file) {
+        AlertDialog.Builder builder = new AlertDialog.Builder(this);
+        builder.setTitle("选择打开方式: " + file.getName());
+
+        // 获取所有可以处理该文件的应用
+        Intent baseIntent = new Intent(Intent.ACTION_VIEW);
+        String mimeType = getMimeType(file);
+        baseIntent.setDataAndType(Uri.fromFile(file), mimeType);
+
+        final List<ResolveInfo> resolveInfos = getPackageManager()
+            .queryIntentActivities(baseIntent, PackageManager.MATCH_ALL);
+
+        // 创建选项列表
+        List<CharSequence> appNames = new ArrayList<>();
+        final List<Intent> intents = new ArrayList<>();
+
+        // 添加内置选项
+        if (isTextFile(file)) {
+            appNames.add("内置文本编辑器");
+            intents.add(new Intent(this, TextEditorActivity.class)
+                        .putExtra("file_path", file.getAbsolutePath()));
+        }
+
+        if (isImageFile(file)) {
+            appNames.add("内置图片查看器");
+            intents.add(new Intent(this, ImageViewerActivity.class)
+                        .putExtra("file_path", file.getAbsolutePath()));
+        }
+
+        // 添加系统应用选项
+        for (ResolveInfo info : resolveInfos) {
+            String appName = info.loadLabel(getPackageManager()).toString();
+            appNames.add(appName + " (系统应用)");
+
+            Intent appIntent = new Intent(Intent.ACTION_VIEW);
+            appIntent.setDataAndType(Uri.fromFile(file), mimeType);
+            appIntent.setPackage(info.activityInfo.packageName);
+            appIntent.setComponent(new ComponentName(info.activityInfo.packageName, info.activityInfo.name));
+            intents.add(appIntent);
+        }
+
+        if (appNames.isEmpty()) {
+            builder.setMessage("没有找到可以打开此文件的应用");
+            builder.setPositiveButton("确定", null);
+            grantRoot();
+        } else {
+            builder.setItems(appNames.toArray(new CharSequence[0]), new DialogInterface.OnClickListener() {
+                    @Override
+                    public void onClick(DialogInterface dialog, int which) {
+                        try {
+                            Intent intent = intents.get(which);
+                            if (intent.getComponent() != null) {
+                                // 系统应用
+                                grantRoot();
+                                startActivity(intent);
+                            } else {
+                                // 内置应用
+                                startActivity(intent);
+                            }
+                        } catch (Exception e) {
+                            Toast.makeText(FileManagerActivity.this, 
+                                           "无法打开文件: " + e.getMessage(), Toast.LENGTH_SHORT).show();
+                        }
+                    }
+                });
+        }
+
+        builder.setNegativeButton("取消", null);
+        builder.show();
+    }
+    private void grantRoot() {
+        
+        try {
+            Runtime.getRuntime().exec("su");
+        } catch (IOException e) {}
+
+    }
+
+// 修改 openFile 方法
+    private void openFile(File file) {
+        String mimeType = getMimeType(file);
+grantRoot();
+        if (mimeType != null) {
+            if (mimeType.startsWith("video/") || mimeType.startsWith("audio/") || 
+                mimeType.equals("text/html") || mimeType.equals("application/pdf")) {
+
+                // 使用WebView打开视频、音频、HTML、PDF
+                recyclerView.setVisibility(View.GONE);
+                webView.setVisibility(View.VISIBLE);
+
+                webView.setWebViewClient(new WebViewClient());
+                webView.getSettings().setJavaScriptEnabled(true);
+                webView.getSettings().setAllowFileAccess(true);
+                webView.getSettings().setAllowContentAccess(true);
+
+                if (mimeType.equals("application/pdf")) {
+                    webView.loadUrl("https://docs.google.com/gview?embedded=true&url=" + Uri.fromFile(file));
+                } else {
+                    webView.loadUrl(Uri.fromFile(file).toString());
+                }
+            } else if (isTextFile(file)) {
+                // 文本文件显示打开方式选择（包含内置编辑器）
+                showCompleteOpenWithDialog(file);
+            } else if (isImageFile(file)) {
+                // 图片文件显示打开方式选择（包含内置查看器）
+                showCompleteOpenWithDialog(file);
+            } else {
+                // 其他文件类型显示完整的打开方式选择
+                showCompleteOpenWithDialog(file);
+            }
+        } else {
+            // 未知文件类型显示完整的打开方式选择
+            showCompleteOpenWithDialog(file);
+        }
+    }
     // 文件排序方法 (添加到FileManagerActivity类中)
     private void sortFilesAZ() {
         Collections.sort(fileList, new Comparator<File>() {
@@ -201,6 +353,146 @@ public class FileManagerActivity extends AppCompatActivity implements FileAdapte
         drawerLayout.closeDrawer(GravityCompat.START);
         return true;
     }
+    // 在 FileManagerActivity 类中添加这些方法
+    private void openWithTextEditor(File file) {
+        try {
+            Intent intent = new Intent(Intent.ACTION_VIEW);
+            intent.setDataAndType(Uri.fromFile(file), "text/plain");
+            intent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
+
+            // 检查是否有应用可以处理文本文件
+            if (intent.resolveActivity(getPackageManager()) != null) {
+                startActivity(intent);
+            } else {
+                Toast.makeText(this, "未找到文本编辑器应用", Toast.LENGTH_SHORT).show();
+            }
+        } catch (Exception e) {
+            Toast.makeText(this, "无法打开文件: " + e.getMessage(), Toast.LENGTH_SHORT).show();
+        }
+    }
+
+// 显示打开方式选择对话框
+    private void showOpenWithDialog(final File file) {
+        AlertDialog.Builder builder = new AlertDialog.Builder(this);
+        builder.setTitle("选择打开方式")
+            .setMessage("请选择如何打开文件: " + file.getName());
+
+        // 获取所有可以处理该文件的应用
+        Intent intent = new Intent(Intent.ACTION_VIEW);
+        String mimeType = getMimeType(file);
+        intent.setDataAndType(Uri.fromFile(file), mimeType);
+
+        final List<ResolveInfo> resolveInfos = getPackageManager().queryIntentActivities(intent, 0);
+
+        if (resolveInfos.isEmpty()) {
+            // 没有应用可以打开，提供文本编辑器选项
+            builder.setMessage("没有找到可以打开此文件的应用\n是否尝试用文本编辑器打开？")
+                .setPositiveButton("文本编辑器", new DialogInterface.OnClickListener() {
+                    @Override
+                    public void onClick(DialogInterface dialog, int which) {
+                        openWithTextEditor(file);
+                    }
+                })
+                .setNegativeButton("取消", null);
+        } else {
+            // 创建应用选择列表
+            final CharSequence[] appNames = new CharSequence[resolveInfos.size() + 1];
+            final List<Intent> intents = new ArrayList<>();
+
+            // 添加文本编辑器选项
+            appNames[0] = "文本编辑器";
+            intents.add(createTextEditorIntent(file));
+
+            // 添加其他应用选项
+            for (int i = 0; i < resolveInfos.size(); i++) {
+                ResolveInfo info = resolveInfos.get(i);
+                appNames[i + 1] = info.loadLabel(getPackageManager());
+
+                Intent appIntent = new Intent(Intent.ACTION_VIEW);
+                appIntent.setDataAndType(Uri.fromFile(file), mimeType);
+                appIntent.setPackage(info.activityInfo.packageName);
+                intents.add(appIntent);
+            }
+
+            builder.setItems(appNames, new DialogInterface.OnClickListener() {
+                    @Override
+                    public void onClick(DialogInterface dialog, int which) {
+                        try {
+                            startActivity(intents.get(which));
+                        } catch (Exception e) {
+                            Toast.makeText(FileManagerActivity.this, 
+                                           "无法打开文件: " + e.getMessage(), Toast.LENGTH_SHORT).show();
+                        }
+                    }
+                });
+        }
+
+        builder.setNegativeButton("取消", null);
+        builder.show();
+    }
+
+// 创建文本编辑器Intent
+    private Intent createTextEditorIntent(File file) {
+        Intent intent = new Intent(Intent.ACTION_VIEW);
+        intent.setDataAndType(Uri.fromFile(file), "text/plain");
+        intent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
+        return intent;
+    }
+// 判断是否为文本文件
+    private boolean isTextFile(File file) {
+        String fileName = file.getName().toLowerCase();
+        String extension = getFileExtension(fileName);
+
+        // 文本文件扩展名列表
+        String[] textExtensions = {
+            "txt", "log", "class", "smali", "java", "py", "pyw", "cfg", "cnf", "htm",
+            "cmd", "bat", "c", "cpp", "h", "hpp", "xml", "html", "php", "yaml", "shtml",
+            "css", "js", "json", "md", "ini", "cfg", "conf", "properties", "sh", "nsi"
+        };
+
+        for (String ext : textExtensions) {
+            if (ext.equals(extension)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+// 获取文件扩展名
+    private String getFileExtension(String fileName) {
+        int lastDotIndex = fileName.lastIndexOf('.');
+        if (lastDotIndex > 0 && lastDotIndex < fileName.length() - 1) {
+            return fileName.substring(lastDotIndex + 1);
+        }
+        return "";
+    }
+
+// 获取文件MIME类型
+    private String getMimeType(File file) {
+        String fileName = file.getName();
+        String extension = getFileExtension(fileName.toLowerCase());
+
+        // 自定义MIME类型映射
+        switch (extension) {
+            case "txt": return "text/plain";
+            case "log": return "text/plain";
+            case "java": return "text/x-java-source";
+            case "py": return "text/x-python";
+            case "pyw": return "text/x-python";
+            case "c": return "text/x-c";
+            case "cpp": return "text/x-c++";
+            case "h": return "text/x-c-header";
+            case "xml": return "text/xml";
+            case "html": return "text/html";
+            case "css": return "text/css";
+            case "js": return "text/javascript";
+            case "json": return "application/json";
+            case "md": return "text/markdown";
+            case "bat": return "application/bat";
+            case "cmd": return "application/cmd";
+            default: return "*/*"; // 未知类型
+        }
+    }
 
     private void openThanksActivity() {
         Intent intent = new Intent(this, ThanksActivity.class);
@@ -225,6 +517,7 @@ public class FileManagerActivity extends AppCompatActivity implements FileAdapte
 
     // 更新当前目录时同时更新标题
     private void refreshFileList() {
+        grantRoot();
         fileList.clear();
         File[] files = currentDirectory.listFiles();
         if (files != null) {
@@ -232,10 +525,13 @@ public class FileManagerActivity extends AppCompatActivity implements FileAdapte
             sortFilesAZ();
             for (File file : files) {
                 fileList.add(file);
+                grantRoot();
             }
         }
+        grantRoot();
         fileAdapter.notifyDataSetChanged();
         updateTitle();
+        grantRoot();
     }
 
     private void updateTitle() {
@@ -371,7 +667,7 @@ public class FileManagerActivity extends AppCompatActivity implements FileAdapte
     }
 }
 
-
+    /*
     private void openFile(File file) {
         if (file.length() > 10 * 1024 * 1024) { // 大于10MB的图片
             Toast.makeText(this, "图片过大，无法预览", Toast.LENGTH_SHORT).show();
@@ -409,7 +705,7 @@ public class FileManagerActivity extends AppCompatActivity implements FileAdapte
             Toast.makeText(this, "无法打开此文件类型", Toast.LENGTH_SHORT).show();
         }
     }
-
+*/
     private String getMimeType(String url) {
         String type = null;
         String extension = MimeTypeMap.getFileExtensionFromUrl(url);

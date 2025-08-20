@@ -42,9 +42,15 @@
 
         <activity android:name="MainActivity"/>
 
-        <activity 
+        <activity
             android:name="close.tm.plus.ThanksActivity"
             android:exported="true"/>
+
+        <activity android:name="close.tm.plus.TextEditorActivity"/>
+
+        <activity android:name="close.tm.plus.ImageViewerActivity"/>
+
+        <activity android:name="close.tm.plus.ZipUtils"/>
 
     </application>
 
